@@ -1,0 +1,261 @@
+{
+  "name": "01 \u00b7 KB Indexer",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 2
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -784,
+        -32
+      ],
+      "id": "909e2475-3239-4115-98ff-655c04e5ac1e",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "resource": "search",
+        "site": {
+          "__rl": true,
+          "value": "YOUR_CONFLUENCE_CLOUD_ID",
+          "mode": "list",
+          "cachedResultName": "your-site",
+          "cachedResultUrl": "https://your-site.example.com"
+        },
+        "cql": "space = \"SK\"",
+        "returnAll": true,
+        "options": {
+          "fetchFullPageContent": true
+        }
+      },
+      "type": "n8n-nodes-base.confluence",
+      "typeVersion": 1,
+      "position": [
+        -304,
+        -48
+      ],
+      "id": "7af8c36f-dcd4-4454-a712-ecaa550de87f",
+      "name": "Perform a query",
+      "alwaysOutputData": true,
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "tableName": {
+          "__rl": true,
+          "value": "kb_documents",
+          "mode": "list",
+          "cachedResultName": "kb_documents"
+        },
+        "options": {
+          "queryName": "="
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreSupabase",
+      "typeVersion": 1.3,
+      "position": [
+        128,
+        -32
+      ],
+      "id": "86428243-e863-40b2-9688-0aca736a452a",
+      "name": "Supabase Vector Store"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        -176,
+        272
+      ],
+      "id": "85e3634a-7dd9-40ff-8b4f-6942f48ff610",
+      "name": "Embeddings OpenAI"
+    },
+    {
+      "parameters": {
+        "jsonMode": "expressionData",
+        "jsonData": "={{ ($json.content.body?.storage?.value ?? \"\").replace(/<[^>]*>/g,\" \") }}",
+        "textSplittingMode": "custom",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1.1,
+      "position": [
+        208,
+        160
+      ],
+      "id": "c76155a2-7fd9-4737-bf71-5e5153960010",
+      "name": "Default Data Loader"
+    },
+    {
+      "parameters": {
+        "operation": "delete",
+        "tableId": "kb_documents",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "neq",
+              "keyValue": "00000000-0000-0000-0000-000000000000"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -560,
+        -48
+      ],
+      "id": "5d03d2bf-14a2-48ea-95d6-2ba00b657275",
+      "name": "Delete a row",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "df41e022-1591-49e1-a31d-03535cf822b0",
+              "leftValue": "={{ $json.content.type }}",
+              "rightValue": "page",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -160,
+        -16
+      ],
+      "id": "a2625aef-129d-43f2-9be4-987baf532169",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "chunkSize": 800,
+        "chunkOverlap": 100,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.textSplitterRecursiveCharacterTextSplitter",
+      "typeVersion": 1,
+      "position": [
+        80,
+        288
+      ],
+      "id": "4938d7f0-ac5e-48ed-b2b3-c10704c4331d",
+      "name": "Recursive Character Text Splitter"
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Delete a row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Perform a query": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings OpenAI": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Supabase Vector Store",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Default Data Loader": {
+      "ai_document": [
+        [
+          {
+            "node": "Supabase Vector Store",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete a row": {
+      "main": [
+        [
+          {
+            "node": "Perform a query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Supabase Vector Store",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recursive Character Text Splitter": {
+      "ai_textSplitter": [
+        [
+          {
+            "node": "Default Data Loader",
+            "type": "ai_textSplitter",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  }
+}

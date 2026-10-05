@@ -1,0 +1,534 @@
+{
+  "name": "02 \u00b7 Case Triage",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "triggerOn": "caseCreated"
+      },
+      "type": "n8n-nodes-base.salesforceTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -544,
+        -224
+      ],
+      "id": "bd818454-f5f3-4519-b1d7-9f873e64195a",
+      "name": "Salesforce Trigger",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "resource": "case",
+        "operation": "get",
+        "caseId": "={{ $json.Id }}"
+      },
+      "type": "n8n-nodes-base.salesforce",
+      "typeVersion": 1.1,
+      "position": [
+        -320,
+        -224
+      ],
+      "id": "066a7436-b3a9-4921-b88c-74e75c5f65b4",
+      "name": "Get a case",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Case Number: {{ $json.CaseNumber }}\nSubject: {{ $json.Subject }}\nDescription: {{ $json.Description }}\nCurrent Priority: {{ $json.Priority }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are a support triage assistant for a SaaS support team. Given a new\nSalesforce case, produce a triage decision.\n\nFor each case, decide:\n1. Category \u2014 exactly one of: Billing, Technical, Account, Other.\n2. Priority \u2014 exactly one of: Low, Medium, High, Critical.\n3. Confidence \u2014 a number from 0 to 1: how certain you are of this decision.\n4. Queue \u2014 the destination queue: Billing, Technical, Account, or General.\n5. suggested_reply \u2014 a short, friendly first response a human agent can send.\n\nRules:\n- Always check the Knowledge Base tool for relevant policies or known issues\n  before writing the reply.\n- Base suggested_reply on what the Knowledge Base returns. Never invent product\n  details, prices, timelines, or policies.\n- If the Knowledge Base has nothing relevant, keep the reply generic and lower\n  your confidence.\n- Lower confidence (below 0.7) whenever the case is ambiguous or you are unsure.\n- Use High or Critical only for urgent, blocking, or account-threatening issues.\n- Output only the structured result."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -400,
+        208
+      ],
+      "id": "a77e36d5-94d3-4c88-9456-744c69966912",
+      "name": "AI Agent",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolDescription": "Searches the internal Support Knowledge Base (Confluence) for documented\nanswers. The KB covers four areas: Billing & Refunds, Account & Login,\nTechnical Troubleshooting, and Shipping & Delivery.\n\nCall this tool whenever a case mentions a product behavior, policy, error,\nor customer question that likely has a documented answer \u2014 and always before\ndrafting a suggested reply, so the response is grounded in the KB rather\nthan invented.\n\nReturns the most relevant KB passages for the query. Use only what it\nreturns; if the KB has no relevant passage, say so instead of guessing.",
+        "tableName": {
+          "__rl": true,
+          "value": "kb_documents",
+          "mode": "list",
+          "cachedResultName": "kb_documents"
+        },
+        "options": {
+          "queryName": "match_documents"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreSupabase",
+      "typeVersion": 1.3,
+      "position": [
+        -408,
+        440
+      ],
+      "id": "842766df-cdb3-4476-b257-f770c99613d7",
+      "name": "Supabase Vector Store"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        -328,
+        648
+      ],
+      "id": "67827ef2-d7ea-4d8d-908b-5a9806505fdb",
+      "name": "Embeddings OpenAI"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5-nano",
+          "mode": "list",
+          "cachedResultName": "gpt-5-nano"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        -536,
+        440
+      ],
+      "id": "02a705ba-b79d-469f-8e00-6777d798c5c5",
+      "name": "OpenAI Chat Model"
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n  \"category\": \"string\",\n  \"priority\": \"string\",\n  \"confidence\": \"string\",\n  \"queue\": \"string\",\n  \"suggested_reply\": \"string\"\n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        -120,
+        440
+      ],
+      "id": "c5064393-b9a4-403c-8d29-721d29e39944",
+      "name": "Structured Output Parser"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "408d20db-5f05-44af-aaa8-8f2414bf5a20",
+              "leftValue": "={{ Number($json.output.confidence) }}",
+              "rightValue": 0.7,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -64,
+        208
+      ],
+      "id": "63033a8f-0684-4747-9716-79d78c62eeb3",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "resource": "case",
+        "operation": "update",
+        "caseId": "={{ $('Get a case').item.json.Id }}",
+        "updateFields": {
+          "customFieldsUi": {
+            "customFieldsValues": [
+              {
+                "fieldId": "Queue__c",
+                "value": "={{ $('AI Agent').first().json.output.queue }}"
+              },
+              {
+                "fieldId": "Suggested_Reply__c",
+                "value": "={{ $('AI Agent').first().json.output.suggested_reply }}"
+              }
+            ]
+          },
+          "priority": "={{ $('AI Agent').first().json.output.priority }}"
+        }
+      },
+      "type": "n8n-nodes-base.salesforce",
+      "typeVersion": 1.1,
+      "position": [
+        176,
+        192
+      ],
+      "id": "672fa72d-9824-4ec4-b40b-618260478a94",
+      "name": "Update a case"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "processed_cases",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "case_id",
+              "keyValue": "={{ $json.CaseNumber }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -96,
+        -224
+      ],
+      "id": "2261d26d-eafb-4a43-b00d-5c6bb35da9e5",
+      "name": "Get a row",
+      "alwaysOutputData": true,
+      "retryOnFail": false,
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "b163ca16-636d-4a4d-a8bd-3c0ac7c02858",
+              "leftValue": "={{ $json.created_at }}",
+              "rightValue": "",
+              "operator": {
+                "type": "object",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        128,
+        -224
+      ],
+      "id": "7e6b1c44-0689-4e46-a757-f8260dfe4d85",
+      "name": "If1"
+    },
+    {
+      "parameters": {
+        "tableId": "case_triage_audit",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "case_id",
+              "fieldValue": "={{ $('Get a case').first().json.CaseNumber }}"
+            },
+            {
+              "fieldId": "category",
+              "fieldValue": "={{ $('AI Agent').first().json.output.category }}"
+            },
+            {
+              "fieldId": "priority",
+              "fieldValue": "={{ $('AI Agent').first().json.output.priority }}"
+            },
+            {
+              "fieldId": "confidence",
+              "fieldValue": "={{ $('AI Agent').first().json.output.confidence }}"
+            },
+            {
+              "fieldId": "action",
+              "fieldValue": "auto-routed"
+            },
+            {
+              "fieldId": "model",
+              "fieldValue": "gpt-nano"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        400,
+        192
+      ],
+      "id": "4fb499f4-b7a4-417e-8372-4f8912ac73cc",
+      "name": "Create a row"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "YOUR_SLACK_CHANNEL_ID",
+          "mode": "list",
+          "cachedResultName": "your-channel"
+        },
+        "text": "=:rotating_light: *Case needs human review*  \n\n*Case:* {{ $('Get a case').first().json.CaseNumber }} \u2014 {{ $('Salesforce Trigger').first().json.Subject }} \n*Reason:* low confidence ({{ $json.output.confidence }} < 0.7) \n*AI suggests:* {{ $json.output.category }} \u00b7 {{ $json.output.priority }} \n*Draft ready:* yes (in case field) \n<https://your-org.lightning.force.com/lightning/r/Case/{{ $('Get a case').first().json.Id }}/view|Open in Salesforce>",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.7,
+      "position": [
+        192,
+        416
+      ],
+      "id": "44340c4a-9de7-4051-ac8b-f23822afb6b6",
+      "name": "Send a message"
+    },
+    {
+      "parameters": {
+        "tableId": "case_triage_audit",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "case_id",
+              "fieldValue": "={{ $('Get a case').first().json.CaseNumber }}"
+            },
+            {
+              "fieldId": "category",
+              "fieldValue": "={{ $('AI Agent').first().json.output.category }}"
+            },
+            {
+              "fieldId": "priority",
+              "fieldValue": "={{ $('AI Agent').first().json.output.priority }}"
+            },
+            {
+              "fieldId": "confidence",
+              "fieldValue": "={{ $('AI Agent').first().json.output.confidence }}"
+            },
+            {
+              "fieldId": "action",
+              "fieldValue": "escalated"
+            },
+            {
+              "fieldId": "model",
+              "fieldValue": "gpt-nano"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        384,
+        416
+      ],
+      "id": "9d39be50-7221-4358-b68c-d01a9c737614",
+      "name": "Create a row1"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "processed_cases",
+        "matchType": "allFilters",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "case_id",
+              "fieldValue": "={{ $('Get a case').first().json.CaseNumber }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        368,
+        -224
+      ],
+      "id": "7f37ce4b-0bdb-40f4-9b17-63aa3aa9c2be",
+      "name": "Update a row"
+    }
+  ],
+  "connections": {
+    "Salesforce Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get a case",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get a case": {
+      "main": [
+        [
+          {
+            "node": "Get a row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase Vector Store": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings OpenAI": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Supabase Vector Store",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Update a case",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update a case": {
+      "main": [
+        [
+          {
+            "node": "Create a row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get a row": {
+      "main": [
+        [
+          {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If1": {
+      "main": [
+        [
+          {
+            "node": "Update a row",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a message": {
+      "main": [
+        [
+          {
+            "node": "Create a row1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  }
+}
